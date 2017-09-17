@@ -5,7 +5,6 @@ import random
 import threading
 import tempfile
 import shutil
-import testhw1
 import time
 import os
 import re
@@ -27,40 +26,25 @@ def unpackFile(f, extract_dir):
     test = patoolib.extract_archive(f, outdir=extract_dir, verbosity=-1)
     print(bcolors.BLUE + "Extracted to %s" % extract_dir + bcolors.ENDC)
 
-def output_reader(proc):
-    for line in iter(proc.stdout.readline, b''):
-        v = bytes(str(random.randint(1, 20)) + "\n", 'utf-8')
-        l = line.decode('utf-8').lower()
-        if 'higher' in l:
-            proc.stdin.write(b'3\n')
-            proc.stdin.flush()
-        else:
-            proc.stdin.write(v)
-            proc.stdin.flush()
-        print(l)
+def execScript(f):
+    subprocess.call("python %s" % f, shell=True)
 
 def runFile(f):
     fp = open(f, "r")
     lines = fp.readlines()[:10]
     fp.close()
+    comment_block=False
     for line in lines:
+        triple_quotes = line.strip().startswith("\"\"\"")
+        if triple_quotes:
+            comment_block = not comment_block
+        if comment_block:
+            print(line.rstrip())
         if line.strip().startswith("#"):
             print(line.rstrip())
 
-    p = subprocess.Popen(['/usr/bin/python', f,'-i'], 
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE)
-
-    
-#    t = threading.Thread(target=output_reader, args=(p,))
-#    t.start()
-
-    r = random.randint(1,20)
-    p.stdin.write(b'5\n')
-    p.stdin.flush()
-
-    
+    t = threading.Thread(target=execScript(f), args=())
+    t.start()
 
 def replace(file_path, pattern, subst):
     fh, abs_path = tempfile.mkstemp()
@@ -74,7 +58,7 @@ def replace(file_path, pattern, subst):
 def addGrade(studentFolder, grade):
     grade_file = "grades.txt"
     studentName = studentFolder.split('-')[0]
-    write_line = "%s %s\n" % (studentName, grade)
+    write_line = "%s,%s\n" % (studentName, grade)
     yes = ['y', 'Y', 'yes']
     
     try:
@@ -114,7 +98,7 @@ def getAlreadyGradedStudents(grades_file):
         if skip_graded in yes:
             skip_already_graded = True
             fp = open(grades_file, "r")
-            curr_graded = list(map(lambda x: x.split(' ')[0], fp.readlines()))
+            curr_graded = list(map(lambda x: x.split(',')[0], fp.readlines()))
             fp.close()
     return curr_graded, skip_already_graded
 
@@ -202,13 +186,16 @@ def extractStudentArchive(archive, grading_dir, gradeableFolders):
         gradeableFolderName = grading_dir + studentName[1] + studentName[0] + "-" + studentFileName
     except:
         gradeableFolderName = archive_path
-    unpackFile(archive_path, gradeableFolderName)
-    os.remove(archive_path)
-    if folderIsGradeable(gradeableFolderName):
-        gradeableFolders.append(gradeableFolderName)
+    if os.path.isdir(gradeableFolderName):
+        print("Can't extract, folder exists: %s" % gradeableFolderName)
     else:
-        print("%s not gradeable, removing directory!" % gradeableFolderName)
-        shutil.rmtree(gradeableFolderName)
+        unpackFile(archive_path, gradeableFolderName)
+        os.remove(archive_path)
+        if folderIsGradeable(gradeableFolderName):
+            gradeableFolders.append(gradeableFolderName)
+        else:
+            print("%s not gradeable, removing directory!" % gradeableFolderName)
+            shutil.rmtree(gradeableFolderName)
 
 #Walks through folders/files in grading directory to unzip and/or see if they are gradeable. 
 def getGradeableFolders(grading_dir):
@@ -246,7 +233,7 @@ def printStudentInformation(studentFolder, studentName):
     print(bcolors.GREEN + "\n%s" % studentName + bcolors.ENDC)
     folderParts = studentFolder.split('-')
     nameParts = re.findall('[A-Z][^A-Z]*', studentName)
-    studentShortName = nameParts[1].lower()[0] + nameParts[0].lower() + "-hw1"
+    studentShortName = nameParts[1].lower()[0] + nameParts[0].lower() + "-hw2"
     try:
         folderSubmitted = folderParts[1].lower() + "-" + folderParts[2].lower()
         correctSubmission = (studentShortName == folderSubmitted)
@@ -282,7 +269,7 @@ def main():
             printSelectionList(grading_files)
             selection_number = input(bcolors.GREEN + "Enter a selection\n" + bcolors.ENDC)
             selection = parseSelection(grading_files, selection_number)
-            status = handleSelection(selection, studentFolder, args.tests)
+            status = handleSelection(selection, studentFolder)
             if status == 0: 
                 break
             else:
