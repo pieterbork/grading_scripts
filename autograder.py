@@ -1,3 +1,4 @@
+from difflib import SequenceMatcher
 import argparse
 import patoolib
 import threading
@@ -150,17 +151,18 @@ def get_selection(python_scripts):
             parts = fn.split("/")
             fn = parts[-2] + "/" + parts[-1]
         print("[%s] %s" % (idx, fn))
-    sel_number = ""
-    while not isint(sel_number) and sel_number != "-":
+    sel_number = " "
+    while not isint(sel_number[0]) and sel_number != "-":
         sel_number =  input(bcolors.GREEN + "Enter a selection\n" + bcolors.ENDC)
     if sel_number == "-":
         selection = "skip"
     else:
-        sel_number = int(sel_number)
+        sel_args = sel_number[1:]
+        sel_number = int(sel_number[0])
         selection = python_scripts[sel_number]
-    return selection
+    return selection,sel_args
 
-def handle_selection(selection, student):
+def handle_selection(selection, args, student):
     if selection == "skip":
         return 0
     elif selection == "grade":
@@ -169,7 +171,7 @@ def handle_selection(selection, student):
             shutil.rmtree(student.extract_path)
             return 0
     else:
-        runFile(selection)
+        run_file(selection, args)
 
 def replace(file_path, pattern, subst):
     fh, abs_path = tempfile.mkstemp()
@@ -213,7 +215,7 @@ def add_grade(student, grade):
         gf.close()
         return 0
 
-def runFile(f):
+def run_file(f, fargs):
     fp = open(f, "r")
     lines = fp.readlines()[:10]
     fp.close()
@@ -227,34 +229,107 @@ def runFile(f):
         if line.strip().startswith("#"):
             print(line.rstrip())
 
-    run_line = "python %s" % f
+    run_line = "python %s %s" % (f, fargs)
     try:
         p = subprocess.call(run_line, shell=True)
     except KeyboardInterrupt:
         print("CTRL-C caught, script has been killed!")
 
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+def remove_header(lines):
+    new_script = []
+    comment_block = False
+    for idx, line in enumerate(lines):
+        is_comment = False
+        triple_quotes = line.strip().startswith("\"\"\"")
+        if triple_quotes:
+            comment_block = not comment_block
+        if comment_block or line.strip().startswith("#"):
+            is_comment = True
+        if not is_comment and idx < 10:
+            new_script.append(line)
+        elif idx > 10:
+            new_script.append(line)
+    return new_script
+
+def compare_scripts(script_one, script_two):
+    scripts = [script_one, script_two]
+    contents = []
+    for script in scripts:
+        fp = open(script, 'r')
+        script_contents = fp.readlines()
+        fp.close()
+        stripped_contents = remove_header(script_contents)
+        contents.append(stripped_contents)
+    comp = similar(str(contents[0]), str(contents[1]))
+    return comp
+
+def detect_cheaters(python_scripts):
+    script_lists = []
+    keyword_lists = []
+    words = ["file", "file ", "file_"]
+    for i in range(1,3):
+        keywords = list(map(lambda x: x + str(i), words))
+        for j in range(1, 3):
+            version = str(j) + "." + str(i)
+            version_two = str(j) + "_" + str(i)
+            keywords.append(version)
+            keywords.append(version_two)
+        keyword_lists.append(keywords)
+    
+    for keyword_list in keyword_lists:
+        matching_scripts = []
+        for s in python_scripts:
+            if any(word in s.lower() for word in keyword_list):
+                matching_scripts.append(s)
+        script_lists.append(matching_scripts)
+
+    greatest_vals = {}
+    for script_list in script_lists:
+        for script_one in script_list:
+            print(script_one)
+            greatest_val = 0
+            for script_two in script_list:
+                if script_one == script_two:
+                    continue
+                cheat_val = compare_scripts(script_one, script_two)
+                if cheat_val > greatest_val:
+                    greatest_val = cheat_val
+            greatest_vals[script_one] = greatest_val
+            print(greatest_val)
+    print(greatest_vals)
+
 def main():
     global grading_dir
     parser = argparse.ArgumentParser()
     parser.add_argument("file")
+    parser.add_argument('-c', '--cheating', required=False, action='store_true')
     args = parser.parse_args()
 
     create_grading_dir(args.file)
     prune_grading_dir(grading_dir)
     students = generate_students()
+    all_scripts = []
 
     for student in students:
         print(bcolors.GREEN + "\n" + student.name + bcolors.ENDC)
         unpack_file(student.archive_path, student.extract_path)
         python_scripts = get_python_files(student.extract_path)
-        python_scripts.insert(0, "grade")
-        while(1):
-            selection = get_selection(python_scripts)
-            status = handle_selection(selection, student)
-            if status == 0:
-                break
-            else:
-                continue
+        if args.cheating:
+            all_scripts.extend(python_scripts)
+        else:
+            python_scripts.insert(0, "grade")
+            while(1):
+                selection,sel_args = get_selection(python_scripts)
+                status = handle_selection(selection, sel_args, student)
+                if status == 0:
+                    break
+                else:
+                    continue
+    if args.cheating:
+        detect_cheaters(all_scripts)
 
 if __name__ == "__main__":
     main()
