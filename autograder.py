@@ -269,12 +269,13 @@ def compare_scripts(script_one, script_two):
         fp.close()
         stripped_contents = remove_header(script_contents)
         contents.append(stripped_contents)
-    comp = similar(str(contents[0]), str(contents[1]))
+    comp = similar(contents[0], contents[1])
     return comp
 
 def detect_cheaters(python_scripts):
     script_lists = []
     keyword_lists = []
+    baddest = []
     words = ["file", "file ", "file_"]
     for i in range(1,3):
         keywords = list(map(lambda x: x + str(i), words))
@@ -292,20 +293,16 @@ def detect_cheaters(python_scripts):
                 matching_scripts.append(s)
         script_lists.append(matching_scripts)
 
-    greatest_vals = {}
     for script_list in script_lists:
         for script_one in script_list:
-            print(script_one)
-            greatest_val = 0
             for script_two in script_list:
                 if script_one == script_two:
                     continue
                 cheat_val = compare_scripts(script_one, script_two)
-                if cheat_val > greatest_val:
-                    greatest_val = cheat_val
-            greatest_vals[script_one] = greatest_val
-            print(greatest_val)
-    print(greatest_vals)
+                bad = {"name1": script_one, "name2": script_two, "val": cheat_val}
+                baddest.append(bad)
+    return sorted(baddest, key=lambda x:x['val'], reverse=True)
+
 
 def main():
     global grading_dir
@@ -335,7 +332,9 @@ def main():
                 else:
                     continue
     if args.cheating:
-        detect_cheaters(all_scripts)
+        cheats = detect_cheaters(all_scripts)
+        for maybe_cheater in cheats[:10]:
+            print(maybe_cheater)
 
 if __name__ == "__main__":
     main()
