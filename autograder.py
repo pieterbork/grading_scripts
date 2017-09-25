@@ -1,4 +1,5 @@
 from difflib import SequenceMatcher
+import readline
 import argparse
 import patoolib
 import threading
@@ -151,9 +152,13 @@ def get_selection(python_scripts):
             parts = fn.split("/")
             fn = parts[-2] + "/" + parts[-1]
         print("[%s] %s" % (idx, fn))
-    sel_number = " "
-    while not isint(sel_number[0]) and sel_number != "-":
+    sel_number = None
+    while not sel_number:
         sel_number =  input(bcolors.GREEN + "Enter a selection\n" + bcolors.ENDC)
+        if len(sel_number) > 0 and (not isint(sel_number[0]) and sel_number != "-"):
+            sel_number = None
+    
+    sel_args = ""
     if sel_number == "-":
         selection = "skip"
     else:
@@ -171,6 +176,7 @@ def handle_selection(selection, args, student):
             shutil.rmtree(student.extract_path)
             return 0
     else:
+        print("RUN")
         run_file(selection, args)
 
 def replace(file_path, pattern, subst):
